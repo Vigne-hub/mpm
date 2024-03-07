@@ -13,7 +13,7 @@ if platform.system() == 'Windows':
     install_requires += ['pywin32']
 
 st.setup(name='microdrop-plugin-manager',
-         version="0.8",
+         version="0.8.1",
          description='MicroDrop plugin manager.',
          keywords='',
          author='Christian Fobel',
