@@ -4,7 +4,6 @@ from collections import OrderedDict
 import datetime as dt
 import logging
 import sys
-
 from path_helpers import path
 import si_prefix as si
 
@@ -25,15 +24,15 @@ LOG_PARSER.add_argument('-l', '--log-level', default='error',
                         choices=['error', 'debug', 'info'])
 CONFIG_PARSER_ARGS = (('-c', '--config-file'),
                       dict(type=path, help='MicroDrop config file '
-                           '(default="{default}").'
+                                           '(default="{default}").'
                            .format(default=default_config_path)))
 CONFIG_PARSER = ArgumentParser(add_help=False)
 CONFIG_PARSER.add_argument(*CONFIG_PARSER_ARGS[0], **CONFIG_PARSER_ARGS[1])
 
 SERVER_PARSER = ArgumentParser(add_help=False)
 SERVER_PARSER.add_argument('-s', '--server-url',
-                            default=DEFAULT_INDEX_HOST, help='MicroDrop '
-                            'plugin index URL (default="%(default)s")')
+                           default=DEFAULT_INDEX_HOST, help='MicroDrop '
+                                                            'plugin index URL (default="%(default)s")')
 PLUGINS_PARSER = ArgumentParser(add_help=False)
 PLUGINS_PARSER.add_argument('plugin', nargs='+')
 
@@ -42,7 +41,7 @@ mutex_path = PLUGINS_DIR_PARSER.add_mutually_exclusive_group()
 mutex_path.add_argument(*CONFIG_PARSER_ARGS[0], **CONFIG_PARSER_ARGS[1])
 mutex_path.add_argument('-d', '--plugins-directory', type=path,
                         help='MicroDrop plugins directory '
-                        '(default="{default}").'
+                             '(default="{default}").'
                         .format(default=default_plugins_directory))
 
 MPM_PARSER = ArgumentParser(add_help=False, parents=[LOG_PARSER,
@@ -54,20 +53,20 @@ install_parser = subparsers.add_parser('install', help='Install plugins.',
                                        parents=[SERVER_PARSER])
 install_parser.add_argument('--no-on-install', action='store_true',
                             help='Do not run `on_plugin_install` hook after '
-                            'installing plugin')
+                                 'installing plugin')
 plugin_group = install_parser.add_mutually_exclusive_group(required=True)
 plugin_group.add_argument('-r', '--requirements-file', type=path)
 plugin_group.add_argument('plugin', nargs='*', default=[])
 
 search_parser = subparsers.add_parser('search', help='Search server for '
-                                      'plugin.', parents=[SERVER_PARSER])
+                                                     'plugin.', parents=[SERVER_PARSER])
 search_parser.add_argument('plugin')
 
 subparsers.add_parser('uninstall', help='Uninstall plugins.',
                       parents=[PLUGINS_PARSER])
 
 subparsers.add_parser('freeze', help='Output installed packages in '
-                      'requirements format.')
+                                     'requirements format.')
 
 hook_parser = subparsers.add_parser('hook', help='Execute plugin hook')
 hook_parser.add_argument('hook', choices=['on_install'], help='Plugin hook')
@@ -82,7 +81,7 @@ def parse_args(args=None):
     parser = ArgumentParser(description='MicroDrop plugin manager',
                             parents=[MPM_PARSER])
 
-    return parser.parse_args()
+    return parser.parse_args(args=args)
 
 
 def validate_args(args):
@@ -103,13 +102,12 @@ def validate_args(args):
     logging.basicConfig(level=getattr(logging, args.log_level.upper()))
 
     if getattr(args, 'command', None) == 'install':
-        if args.requirements_file and not args.requirements_file.isfile():
-            print >> sys.stderr, ('Requirements file not available: {}'
-                                    .format(args.requirements_file))
+        if args.requirements_file and not args.requirements_file.is_file():
+            print('Requirements file not available: {}'
+                  .format(args.requirements_file), file=sys.stderr)
             raise SystemExit(-1)
         elif not args.plugin and not args.requirements_file:
-            print >> sys.stderr, ('Requirements file or at least one plugin '
-                                  'must be specified.')
+            print('Requirements file or at least one plugin must be specified.', file=sys.stderr)
             raise SystemExit(-2)
     if hasattr(args, 'server_url'):
         logger.debug('Using MicroDrop index server: "%s"', args.server_url)
@@ -118,11 +116,10 @@ def validate_args(args):
             args.config_file is None]):
         args.plugins_directory = get_plugins_directory()
     elif args.plugins_directory is None:
-        args.config_file = args.config_file.realpath()
-        args.plugins_directory = get_plugins_directory(config_path=
-                                                       args.config_file)
+        args.config_file = args.config_file.resolve()
+        args.plugins_directory = get_plugins_directory(config_path=args.config_file)
     else:
-        args.plugins_directory = args.plugins_directory.realpath()
+        args.plugins_directory = args.plugins_directory.resolve()
     return args
 
 
@@ -130,73 +127,68 @@ def main(args=None):
     if args is None:
         args = parse_args()
     args = validate_args(args)
-    logger.debug('Arguments: %s', args)
+    logger.debug('Arguments: %s', pformat_dict(vars(args)))
     if args.command == 'freeze':
-        print '\n'.join(freeze(plugins_directory=args.plugins_directory))
+        print('\n'.join(freeze(plugins_directory=args.plugins_directory)))
     elif args.command == 'hook':
         if not args.plugin:
-            plugin_paths = args.plugins_directory.dirs()
+            plugin_paths = list(args.plugins_directory.glob('*'))
         else:
-            plugin_paths = [args.plugins_directory.joinpath(p)
-                            for p in args.plugin]
-        print 50 * '*'
-        print '# Processing `on_install` hook for: #\n'
-        print '\n'.join(['  - {}{}'.format(p.name, '' if p.exists()
-                                           else ' (not found)')
-                         for p in plugin_paths])
-        print ''
+            plugin_paths = [args.plugins_directory / p for p in args.plugin]
+        print(50 * '*')
+        print('# Processing `on_install` hook for: #\n')
+        print('\n'.join(['  - {}{}'.format(p.name, '' if p.exists()
+        else ' (not found)')
+                         for p in plugin_paths]))
+        print('')
         if args.hook == 'on_install':
             for plugin_path_i in plugin_paths:
-                print 50 * '-'
+                print(50 * '-')
                 if plugin_path_i.exists():
                     on_plugin_install(plugin_path_i)
                 else:
-                    print >> sys.stderr, '[warning] Skipping missing plugin'
+                    print('[warning] Skipping missing plugin', file=sys.stderr)
     elif args.command == 'install':
         if args.requirements_file:
-            args.plugin = [line.strip() for line in
-                           args.requirements_file.lines()
-                           if not line.startswith('#')]
+            with args.requirements_file.open() as file:
+                args.plugin = [line.strip() for line in file
+                               if not line.startswith('#')]
         for plugin_i in args.plugin:
             try:
                 path_i, meta_i = install(plugin_package=plugin_i,
-                                         plugins_directory=
-                                         args.plugins_directory,
+                                         plugins_directory=args.plugins_directory,
                                          server_url=args.server_url)
                 if not args.no_on_install:
                     on_plugin_install(path_i)
-            except KeyError, exception:
-                print '[{}] {}'.format(plugin_i, exception.message)
-            except ValueError, exception:
-                print exception.message
+            except KeyError as exception:
+                print(f'[{plugin_i}] {exception.args[0]}')
+            except ValueError as exception:
+                print(exception.args[0])
                 continue
     elif args.command == 'search':
         try:
-            plugin_name, releases = search(plugin_package=args.plugin,
+            plugin_name, releases = search(plugin_package=args.plugin[0],
                                            server_url=args.server_url)
             release_info = OrderedDict()
-            release_info['plugin_name'] = [plugin_name] + ((len(releases) - 1)
-                                                           * [''])
-            release_info['version'] = releases.keys()
+            release_info['plugin_name'] = [plugin_name] + ((len(releases) - 1) * [''])
+            release_info['version'] = list(releases.keys())
 
             for k in ['upload_time', 'size']:
                 release_info[k] = [r[k] for r in releases.values()]
 
-            release_info['upload_time'] = map(lambda timestamp: dt.datetime
-                                              .strptime(timestamp,
-                                                        r'%Y-%m-%dT'
-                                                        r'%H:%M:%S.%f')
-                                              .strftime('%Y-%m-%d %H:%M'),
-                                              release_info['upload_time'])
-            release_info['size'] = map(lambda s:
-                                       si.si_format(s, precision=0, format_str=
-                                                    '{value} {prefix}B'),
-                                       release_info['size'])
+            release_info['upload_time'] = [dt.datetime.strptime(timestamp,
+                                                                '%Y-%m-%dT%H:%M:%S.%f').strftime('%Y-%m-%d %H:%M') for
+                                           timestamp in release_info['upload_time']]
+            release_info['size'] = [si.si_format(s, precision=0, format_str='{value} {prefix}B') for s in
+                                    release_info['size']]
 
-            print '\n' + pformat_dict(release_info)
-        except KeyError, exception:
-            print >> sys.stderr, exception.message
+            print('\n' + pformat_dict(release_info))
+        except KeyError as exception:
+            print(exception.args[0], file=sys.stderr)
     elif args.command == 'uninstall':
         for plugin_i in args.plugin:
-            uninstall(plugin_package=plugin_i,
-                      plugins_directory=args.plugins_directory)
+            uninstall(plugin_package=plugin_i, plugins_directory=args.plugins_directory)
+
+
+if __name__ == '__main__':
+    main()

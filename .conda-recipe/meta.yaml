@@ -24,7 +24,7 @@ build:
 
 requirements:
   build:
-    - python 2.7*
+    - python 3.8
     #: ..versionchanged:: 0.25.1
     - conda-helpers >=0.12.3
     - configobj <5.0.0  # Avoid _version.py polluting global site-packages

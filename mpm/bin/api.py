@@ -89,7 +89,7 @@ def main(args=None):
         try:
             disable_plugin(args.plugin)
             disabled_plugins = sorted(args.plugin)
-        except IOError, exception:
+        except IOError as exception:
             if 'not found in' in str(exception):
                 logging.error(str(exception))
                 # No plugins were disabled since at least one plugin was not
@@ -97,7 +97,3 @@ def main(args=None):
                 _dump_list([], args.json)
         else:
             _dump_list(disabled_plugins, args.json)
-
-
-if __name__ == '__main__':
-    main()
