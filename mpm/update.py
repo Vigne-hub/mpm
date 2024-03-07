@@ -4,7 +4,7 @@ from .api import install as plugin_install
 
 
 def _update_plugin(package_name):
-    '''
+    """
     Update plugin (no user interface).
 
     .. versionadded:: 0.19
@@ -33,12 +33,12 @@ def _update_plugin(package_name):
     See also
     --------
     _update_plugin_ui
-    '''
+    """
     try:
         update_json_log = plugin_install(package_name)
     except RuntimeError as exception:
         if 'CondaHTTPError' in str(exception):
-            raise IOError('Error accessing update server.')
+            raise OSError('Error accessing update server.')
         else:
             raise
 
