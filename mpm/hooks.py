@@ -46,7 +46,7 @@ def on_plugin_install(plugin_directory, ostream=sys.stdout):
                 raise RuntimeError('Process return code == {}'
                                    .format(process.returncode))
             return hook_path_i
-        except Exception, exception:
+        except Exception as exception:
             raise RuntimeError('Error running: {}\n{}'.format(hook_path_i,
                                                               exception))
         finally:

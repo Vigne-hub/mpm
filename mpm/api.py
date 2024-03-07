@@ -180,13 +180,13 @@ def available_packages(*args, **kwargs):
         plugin_packages_info_json = ch.conda_exec('search', '--json',
                                                   '^microdrop\.', verbose=False)
         return json.loads(plugin_packages_info_json)
-    except RuntimeError, exception:
+    except RuntimeError as exception:
         if 'CondaHTTPError' in str(exception):
             logger.warning('Could not connect to Conda server.')
         else:
             logger.warning('Error querying available MicroDrop plugins.',
                            exc_info=True)
-    except Exception, exception:
+    except Exception as exception:
         logger.warning('Error querying available MicroDrop plugins.',
                        exc_info=True)
     return {}
@@ -527,7 +527,7 @@ def update(*args, **kwargs):
         # Attempt to install plugin packages.
         try:
             install_log = install(package_name, *args, **kwargs)
-        except RuntimeError, exception:
+        except RuntimeError as exception:
             if 'CondaHTTPError' in str(exception):
                 raise IOError('Error accessing update server.')
             else:
@@ -628,7 +628,7 @@ def installed_plugins(only_conda=False):
                              for plugin_i in installed_plugins_]
             conda_package_infos = ch.package_version(package_names,
                                                      verbose=False)
-        except ch.PackageNotFound, exception:
+        except ch.PackageNotFound as exception:
             # At least one specified plugin package name did not correspond to an
             # installed Conda package.
             logger.warning(str(exception))
@@ -705,7 +705,7 @@ def enabled_plugins(installed_only=True):
             package_names = [properties_i['package_name']
                              for properties_i in enabled_plugins_]
             installed_info = ch.package_version(package_names, verbose=False)
-        except ch.PackageNotFound, exception:
+        except ch.PackageNotFound as exception:
             # Failed to find a corresponding installed Conda package for at
             # least one enabled plugin.
             logger.warning(str(exception))
