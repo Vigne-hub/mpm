@@ -21,7 +21,7 @@ import tarfile
 import yaml
 
 # TODO: Replace usage of pip helpers if possible
-from ext_libs.pip_helpers import CRE_PACKAGE, get_releases
+from pip_helpers import CRE_PACKAGE, get_releases
 
 logger = logging.getLogger(__name__)
 
