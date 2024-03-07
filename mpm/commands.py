@@ -9,11 +9,10 @@ Inspired by `pip`.
     mpm uninstall <plugin-name>
     mpm freeze
 '''
-import cStringIO as StringIO
 import logging
 import os
 import tempfile as tmp
-
+import io
 from path_helpers import path
 import configobj
 import progressbar
@@ -21,12 +20,15 @@ import requests
 import tarfile
 import yaml
 
+# TODO: Replace usage of pip helpers if possible
+from ext_libs.pip_helpers import CRE_PACKAGE, get_releases
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_INDEX_HOST = r'http://microfluidics.utoronto.ca/update'
 SERVER_URL_TEMPLATE = r'%s/plugins/{}/json/'
 DEFAULT_SERVER_URL = SERVER_URL_TEMPLATE % DEFAULT_INDEX_HOST
+
 
 def home_dir():
     '''
@@ -35,7 +37,7 @@ def home_dir():
         str : Path to home directory (or ``Documents`` directory on Windows).
     '''
     if os.name == 'nt':
-        from win32com.shell import shell, shellcon
+        from win32comext.shell import shell, shellcon
 
         return shell.SHGetFolderPath(0, shellcon.CSIDL_PERSONAL, 0, 0)
     else:
@@ -110,7 +112,7 @@ def get_plugins_directory(config_path=None, microdrop_user_root=None):
         if not plugins_directory.isdir():
             raise IOError('Plugins directory does not exist: {}'
                           .format(plugins_directory))
-    except Exception, why:
+    except Exception as why:
         # Error looking up plugins directory in configuration file (maybe no
         # plugins directory was listed in configuration file?).
         plugins_directory = microdrop_user_root.joinpath('plugins')
@@ -132,7 +134,6 @@ def plugin_request(plugin_str):
 
         .. _sci-bots/mpm#5: https://github.com/sci-bots/mpm/issues/5
     '''
-    from pip_helpers import CRE_PACKAGE
 
     match = CRE_PACKAGE.match(plugin_str)
     if not match:
@@ -171,7 +172,6 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
 
         .. _sci-bots/mpm#5: https://github.com/sci-bots/mpm/issues/5
     '''
-    import pip_helpers
 
     if path(plugin_package).isfile():
         plugin_is_file = True
@@ -184,14 +184,17 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
         plugin_is_file = False
         # Look up latest release matching specifiers.
         try:
-            name, releases = pip_helpers.get_releases(plugin_package,
-                                                      server_url=server_url)
+            name, releases = get_releases(plugin_package,
+                                          server_url=server_url)
             version, release = releases.items()[-1]
         except KeyError:
             raise
 
     # Check existing version (if any).
-    plugin_path = plugins_directory.joinpath(name)
+    try:
+        plugin_path = plugins_directory.joinpath(name)
+    except:
+        plugin_path = path(plugins_directory).joinpath(name)
 
     if not plugin_path.isdir():
         existing_version = None
@@ -209,37 +212,45 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
         # Uninstall existing package.
         uninstall(name, plugins_directory)
 
-    # Install latest release
-    # ======================
-    print 'Installing `{}=={}`.'.format(name, version)
+
+    # Assuming 'name' and 'version' variables are defined
+    print(f'Installing `{name}=={version}`.')
 
     if not plugin_is_file:
         # Download plugin release archive.
         download = requests.get(release['url'], stream=True)
 
-        plugin_archive_bytes = StringIO.StringIO()
-        total_bytes = int(download.headers['Content-length'])
+        # Use io.BytesIO for a bytes buffer
+        plugin_archive_bytes = io.BytesIO()
+        total_bytes = int(download.headers['Content-Length'])  # Correct header key
         bytes_read = 0
 
+        # Set up the progress bar
         with progressbar.ProgressBar(max_value=total_bytes) as bar:
-            while bytes_read < total_bytes:
-                chunk_i = download.raw.read(1 << 8)
-                bytes_read += len(chunk_i)
-                plugin_archive_bytes.write(chunk_i)
-                bar.update(bytes_read)
+            for chunk in download.iter_content(chunk_size=1024):
+                if chunk:  # filter out keep-alive chunks
+                    bytes_read += len(chunk)
+                    plugin_archive_bytes.write(chunk)
+                    bar.update(bytes_read)
 
-        # Extract downloaded plugin to install path.
+        # Reset the stream position to the beginning before reading from it
         plugin_archive_bytes.seek(0)
     else:
+        # Open the plugin package as a binary file
         plugin_archive_bytes = open(plugin_package, 'rb')
 
-    plugin_path, plugin_metadata = install_fileobj(plugin_archive_bytes,
-                                                   plugin_path)
-    # Ensure installed package and version does not match requested version.
-    assert(all([plugin_metadata['package_name'] == name,
-                plugin_metadata['version'] == version]))
-    print '  \--> done'
+    # Assuming 'install_fileobj', 'plugin_path', and 'plugin_metadata' functions or variables are defined
+    plugin_path, plugin_metadata = install_fileobj(plugin_archive_bytes, plugin_path)
+
+    # Ensure installed package and version match the requested version
+    assert plugin_metadata['package_name'] == name and plugin_metadata['version'] == version, "Version mismatch error."
+
+    print('  \--> done')
+
+    # Close the file object
     plugin_archive_bytes.close()
+
+    # Assuming 'plugin_path' and 'plugin_metadata' are used further
     return plugin_path, plugin_metadata
 
 
@@ -328,14 +339,14 @@ def uninstall(plugin_package, plugins_directory):
 
     if existing_version is not None:
         # Uninstall existing package.
-        print 'Uninstalling `{}=={}`.'.format(plugin_package, existing_version)
+        print('Uninstalling `{}=={}`.'.format(plugin_package, existing_version))
     else:
-        print 'Uninstalling `{}`.'.format(plugin_package)
+        print('Uninstalling `{}`.'.format(plugin_package))
 
     # Uninstall latest release
     # ======================
     plugin_path.rmtree()
-    print '  \--> done'
+    print('  \--> done')
 
 
 def freeze(plugins_directory):
@@ -393,7 +404,6 @@ def search(plugin_package, server_url=DEFAULT_SERVER_URL):
 
         .. _sci-bots/mpm#5: https://github.com/sci-bots/mpm/issues/5
     '''
-    import pip_helpers
 
     # Look up latest release matching specifiers.
-    return pip_helpers.get_releases(plugin_package, server_url=server_url)
+    return get_releases(plugin_package, server_url=server_url)
