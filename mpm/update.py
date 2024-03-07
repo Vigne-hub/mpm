@@ -36,7 +36,7 @@ def _update_plugin(package_name):
     '''
     try:
         update_json_log = plugin_install(package_name)
-    except RuntimeError, exception:
+    except RuntimeError as exception:
         if 'CondaHTTPError' in str(exception):
             raise IOError('Error accessing update server.')
         else:
