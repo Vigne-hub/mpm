@@ -9,11 +9,12 @@ Inspired by `pip`.
     mpm uninstall <plugin-name>
     mpm freeze
 '''
+import io
 import logging
 import os
 import tempfile as tmp
-import io
-from path_helpers import path
+
+from pathlib import Path
 import configobj
 import progressbar
 import requests
@@ -31,11 +32,11 @@ DEFAULT_SERVER_URL = SERVER_URL_TEMPLATE % DEFAULT_INDEX_HOST
 
 
 def home_dir():
-    '''
+    """
     Returns:
 
         str : Path to home directory (or ``Documents`` directory on Windows).
-    '''
+    """
     if os.name == 'nt':
         from win32comext.shell import shell, shellcon
 
@@ -84,32 +85,31 @@ def get_plugins_directory(config_path=None, microdrop_user_root=None):
 
     # # Find plugins directory path #
     if microdrop_user_root is not None:
-        microdrop_user_root = path(microdrop_user_root).realpath()
+        microdrop_user_root = Path(microdrop_user_root).resolve()
         resolved_by.append(RESOLVED_BY_PROFILE_ARG)
     elif 'MICRODROP_PROFILE' in os.environ:
-        microdrop_user_root = path(os.environ['MICRODROP_PROFILE']).realpath()
+        microdrop_user_root = Path(os.environ['MICRODROP_PROFILE']).resolve()
         resolved_by.append(RESOLVED_BY_PROFILE_ENV)
     else:
-        microdrop_user_root = path(home_dir()).joinpath('MicroDrop')
+        microdrop_user_root = Path(home_dir()).joinpath('MicroDrop')
 
     if config_path is not None:
-        config_path = path(config_path).expand()
+        config_path = Path(config_path).resolve()
         resolved_by.append(RESOLVED_BY_CONFIG_ARG)
     elif 'MICRODROP_CONFIG' in os.environ:
-        config_path = path(os.environ['MICRODROP_CONFIG']).realpath()
+        config_path = Path(os.environ['MICRODROP_CONFIG']).resolve()
         resolved_by.append(RESOLVED_BY_CONFIG_ENV)
     else:
         config_path = microdrop_user_root.joinpath('microdrop.ini')
 
     try:
         # Look up plugins directory stored in configuration file.
-        plugins_directory = path(configobj.ConfigObj(config_path)
-                                 ['plugins']['directory'])
-        if not plugins_directory.isabs():
+        plugins_directory = Path(configobj.ConfigObj(str(config_path))['plugins']['directory']).resolve()
+        if not plugins_directory.is_absolute():
             # Plugins directory stored in configuration file as relative path.
             # Interpret as relative to parent directory of configuration file.
             plugins_directory = config_path.parent.joinpath(plugins_directory)
-        if not plugins_directory.isdir():
+        if not plugins_directory.is_dir():
             raise IOError('Plugins directory does not exist: {}'
                           .format(plugins_directory))
     except Exception as why:
@@ -126,14 +126,14 @@ def get_plugins_directory(config_path=None, microdrop_user_root=None):
 
 
 def plugin_request(plugin_str):
-    '''
+    """
     Extract plugin name and version specifiers from plugin descriptor string.
 
     .. versionchanged:: 0.25.2
         Import from `pip_helpers` locally to avoid error `sci-bots/mpm#5`_.
 
         .. _sci-bots/mpm#5: https://github.com/sci-bots/mpm/issues/5
-    '''
+    """
 
     match = CRE_PACKAGE.match(plugin_str)
     if not match:
@@ -143,7 +143,7 @@ def plugin_request(plugin_str):
 
 
 def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
-    '''
+    """
     Parameters
     ----------
     plugin_package : str
@@ -171,9 +171,9 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
         Import `pip_helpers` locally to avoid error `sci-bots/mpm#5`_.
 
         .. _sci-bots/mpm#5: https://github.com/sci-bots/mpm/issues/5
-    '''
-
-    if path(plugin_package).isfile():
+    """
+    plugins_directory = Path(plugins_directory)
+    if Path(plugin_package).is_file():
         plugin_is_file = True
         with open(plugin_package, 'rb') as plugin_file:
             # Plugin package is a file.
@@ -186,7 +186,7 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
         try:
             name, releases = get_releases(plugin_package,
                                           server_url=server_url)
-            version, release = releases.items()[-1]
+            version, release = list(releases.items())[-1]
         except KeyError:
             raise
 
@@ -194,13 +194,13 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
     try:
         plugin_path = plugins_directory.joinpath(name)
     except:
-        plugin_path = path(plugins_directory).joinpath(name)
+        plugin_path = Path(plugins_directory).joinpath(name)
 
-    if not plugin_path.isdir():
+    if not plugin_path.is_dir():
         existing_version = None
     else:
-        plugin_metadata = yaml.load(plugin_path.joinpath('properties.yml')
-                                    .bytes())
+        plugin_metadata = yaml.safe_load(plugin_path.joinpath('properties.yml')
+                                         .read_text())
         existing_version = plugin_metadata['version']
 
     if version == existing_version:
@@ -210,8 +210,7 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
 
     if existing_version is not None:
         # Uninstall existing package.
-        uninstall(name, plugins_directory)
-
+        uninstall(name, str(plugins_directory))
 
     # Assuming 'name' and 'version' variables are defined
     print(f'Installing `{name}=={version}`.')
@@ -222,7 +221,7 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
 
         # Use io.BytesIO for a bytes buffer
         plugin_archive_bytes = io.BytesIO()
-        total_bytes = int(download.headers['Content-Length'])  # Correct header key
+        total_bytes = int(download.headers.get('Content-Length'))
         bytes_read = 0
 
         # Set up the progress bar
@@ -245,7 +244,7 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
     # Ensure installed package and version match the requested version
     assert plugin_metadata['package_name'] == name and plugin_metadata['version'] == version, "Version mismatch error."
 
-    print('  \--> done')
+    print("  \--> done")
 
     # Close the file object
     plugin_archive_bytes.close()
@@ -271,18 +270,25 @@ def extract_metadata(fileobj):
     '''
     tar = tarfile.open(mode="r:gz", fileobj=fileobj)
 
-    plugin_path = path(tmp.mkdtemp(prefix='mpm-'))
+    plugin_path = Path(tmp.mkdtemp(prefix='mpm-'))
     try:
-        tar.extractall(plugin_path)
+        tar.extractall(path=str(plugin_path))
 
-        return yaml.load(plugin_path.joinpath('properties.yml').bytes())
+        properties_path = plugin_path.joinpath('properties.yml')
+        return yaml.safe_load(properties_path.read_text())
+
     finally:
         fileobj.seek(0)
-        plugin_path.rmtree()
+        for item in plugin_path.glob('*'):
+            if item.is_dir():
+                item.rmdir()
+            else:
+                item.unlink()
+        plugin_path.rmdir()
 
 
 def install_fileobj(fileobj, plugin_path):
-    '''
+    """
     Extract and install plugin from file-like object (e.g., opened file,
     ``StringIO``).
 
@@ -297,18 +303,18 @@ def install_fileobj(fileobj, plugin_path):
     -------
     (path, dict)
         Directory of installed plugin and metadata dictionary for plugin.
-    '''
-    plugin_path = path(plugin_path)
+    """
+    plugin_path = Path(plugin_path)
     tar = tarfile.open(mode="r:gz", fileobj=fileobj)
 
     try:
-        tar.extractall(plugin_path)
+        tar.extractall(path=str(plugin_path))
 
-        plugin_metadata = yaml.load(plugin_path.joinpath('properties.yml').bytes())
+        plugin_metadata = yaml.safe_load(plugin_path.joinpath('properties.yml').read_text())
         fileobj.seek(0)
     except:
         # Error occured, so delete extracted plugin.
-        plugin_path.rmtree()
+        plugin_path.rmdir()
         raise
 
     # TODO Handle `requirements.txt`.
@@ -316,24 +322,23 @@ def install_fileobj(fileobj, plugin_path):
 
 
 def uninstall(plugin_package, plugins_directory):
-    '''
+    """
     Parameters
     ----------
     plugin_package : str
         Name of plugin package hosted on MicroDrop plugin index.
     plugins_directory : str
         Path to MicroDrop user plugins directory.
-    '''
-    # Check existing version (if any).
-    plugin_path = plugins_directory.joinpath(plugin_package)
+    """
+    plugin_path = Path(plugins_directory).joinpath(plugin_package)
 
-    if not plugin_path.isdir():
+    if not plugin_path.is_dir():
         raise IOError('Plugin `%s` is not installed in `%s`' %
                       (plugin_package, plugins_directory))
     else:
         try:
-            plugin_metadata = yaml.load(plugin_path.joinpath('properties.yml').bytes())
-            existing_version = plugin_metadata['version']
+            plugin_metadata = yaml.safe_load(plugin_path.joinpath('properties.yml').read_text())
+            existing_version = plugin_metadata.get('version')
         except:
             existing_version = None
 
@@ -345,7 +350,12 @@ def uninstall(plugin_package, plugins_directory):
 
     # Uninstall latest release
     # ======================
-    plugin_path.rmtree()
+    for item in plugin_path.glob('*'):
+        if item.is_dir():
+            item.rmdir()
+        else:
+            item.unlink()
+    plugin_path.rmdir()
     print('  \--> done')
 
 
@@ -363,16 +373,15 @@ def freeze(plugins_directory):
     '''
     # Check existing version (if any).
     package_versions = []
-    for plugin_path_i in plugins_directory.dirs():
-        try:
-            plugin_metadata = yaml.load(plugin_path_i
-                                        .joinpath('properties.yml').bytes())
-            if plugin_path_i.name != plugin_metadata['package_name']:
+    for plugin_path_i in Path(plugins_directory).iterdir():
+        if plugin_path_i.is_dir():
+            try:
+                plugin_metadata = yaml.safe_load(plugin_path_i.joinpath('properties.yml').read_text())
+                if plugin_path_i.name != plugin_metadata['package_name']:
+                    continue
+                package_versions.append((plugin_metadata['package_name'], plugin_metadata['version']))
+            except:
                 continue
-            package_versions.append((plugin_metadata['package_name'],
-                                     plugin_metadata['version']))
-        except:
-            continue
     return ['%s==%s' % v for v in package_versions]
 
 
