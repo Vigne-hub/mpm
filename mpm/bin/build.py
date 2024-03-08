@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -100,7 +101,7 @@ def build(source_dir, target_dir, package_name=None, version_number=None):
     source_archive.unlink()
 
     # Delete Conda build recipe from installed package.
-    (target_dir / '.conda-recipe').rmdir()
+    shutil.rmtree(target_dir / '.conda-recipe')
     # Delete Conda build recipe from installed package.
     for p in target_dir.glob('.git*'):
         p.unlink()

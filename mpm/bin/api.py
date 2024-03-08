@@ -51,9 +51,9 @@ def _dump_list(list_data, jsonify, stream=sys.stdout):
     stream : file-like
     '''
     if not jsonify and list_data:
-        print >> stream, '\n'.join(list_data)
+        print('\n'.join(list_data), file=stream)
     else:
-        print >> stream, json.dumps(list_data)
+        print(json.dumps(list_data), file=stream)
 
 
 def main(args=None):
@@ -80,7 +80,7 @@ def main(args=None):
     elif args.command == 'enable':
         enabled_now = enable_plugin(args.plugin)
         enabled_plugins = sorted([name_i for name_i, enabled_i in
-                                  enabled_now.iteritems() if enabled_i])
+                                  enabled_now.items() if enabled_i])
 
         # Print list of plugins that were enabled (do not print names of
         # plugins that were already enabled).
