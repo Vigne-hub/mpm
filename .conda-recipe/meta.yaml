@@ -5,7 +5,7 @@ source:
 
 package:
   name: microdrop-plugin-manager
-  version: 0.8.2.alpha
+  version: 0.8.3.alpha
 build:
   entry_points:
     - mpm = mpm.bin:main
