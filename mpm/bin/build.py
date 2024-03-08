@@ -1,12 +1,12 @@
 import argparse
 import logging
 import os
-import shutil
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
 import yaml
+from shutil import rmtree
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ def build(source_dir, target_dir, package_name=None, version_number=None):
     source_archive.unlink()
 
     # Delete Conda build recipe from installed package.
-    shutil.rmtree(target_dir / '.conda-recipe')
+    rmtree(target_dir / '.conda-recipe')
     # Delete Conda build recipe from installed package.
     for p in target_dir.glob('.git*'):
         p.unlink()
@@ -109,8 +109,8 @@ def build(source_dir, target_dir, package_name=None, version_number=None):
     try:
         os.chdir(source_dir)
         if version_number is None:
-            import _version as v
-            version_info = {'version': v.get_versions()['version'], 'versioneer': v.get_versions()}
+            # TODO: Fix with versioneer
+            version_info = {'version': '0.1.alpha'}
         else:
             version_info = {'version': version_number}
     finally:

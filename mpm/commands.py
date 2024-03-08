@@ -12,8 +12,9 @@ Inspired by `pip`.
 import io
 import logging
 import os
+import shutil
 import tempfile as tmp
-
+from shutil import rmtree
 from pathlib import Path
 from microdrop import configobj_micro as configobj
 import progressbar
@@ -281,10 +282,10 @@ def extract_metadata(fileobj):
         fileobj.seek(0)
         for item in plugin_path.glob('*'):
             if item.is_dir():
-                item.rmdir()
+                rmtree(item)
             else:
                 item.unlink()
-        plugin_path.rmdir()
+        shutil.rmtree(plugin_path)
 
 
 def install_fileobj(fileobj, plugin_path):
@@ -314,7 +315,7 @@ def install_fileobj(fileobj, plugin_path):
         fileobj.seek(0)
     except:
         # Error occured, so delete extracted plugin.
-        plugin_path.rmdir()
+        shutil.rmtree(plugin_path)
         raise
 
     # TODO Handle `requirements.txt`.
@@ -352,10 +353,10 @@ def uninstall(plugin_package, plugins_directory):
     # ======================
     for item in plugin_path.glob('*'):
         if item.is_dir():
-            item.rmdir()
+            shutil.rmtree(item)
         else:
             item.unlink()
-    plugin_path.rmdir()
+    shutil.rmtree(plugin_path)
     print('  \--> done')
 
 
