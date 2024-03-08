@@ -15,7 +15,7 @@ import os
 import tempfile as tmp
 
 from pathlib import Path
-import configobj
+from microdrop import configobj_micro as configobj
 import progressbar
 import requests
 import tarfile
