@@ -5,7 +5,7 @@ source:
 
 package:
   name: microdrop-plugin-manager
-  version: 0.8.3.alpha
+  version: 0.8.4.alpha
 build:
   entry_points:
     - mpm = mpm.bin:main
@@ -30,11 +30,13 @@ requirements:
     - pywin32  # [win]
     - pyyaml
     - si-prefix
+    - microdrop_ext_libs
+    - microdrop_helpers
 
   run:
     #: ..versionchanged:: 0.25.1
     - conda-helpers
-    - configobj
+    - microdrop_ext_libs
     - git
     - progressbar2
     - pywin32  # [win]
@@ -44,6 +46,7 @@ requirements:
     - versioneer
     - ntfsutils
     - natsort
+    - microdrop_helpers
 
 test:
   imports:
