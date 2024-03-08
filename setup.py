@@ -11,7 +11,7 @@ if platform.system() == 'Windows':
     install_requires += ['pywin32']
 
 st.setup(name='microdrop-plugin-manager',
-         version="0.8.4.alpha",
+         version="0.8.5.alpha",
          description='MicroDrop plugin manager.',
          keywords='',
          author='Christian Fobel',
@@ -19,7 +19,6 @@ st.setup(name='microdrop-plugin-manager',
          url='https://github.com/wheeler-microfluidics/mpm',
          license='BSD',
          packages=['mpm', ],
-         install_requires=install_requires,
          # Install data listed in `MANIFEST.in`
          include_package_data=True,
          entry_points={'console_scripts': ['mpm = mpm.bin:main']})
