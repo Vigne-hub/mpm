@@ -4,7 +4,7 @@ from collections import OrderedDict
 import datetime as dt
 import logging
 import sys
-from path_helpers import path
+from microdrop_libs.path_helpers import path
 import si_prefix as si
 
 from .. import pformat_dict
@@ -76,7 +76,7 @@ hook_parser.add_argument('plugin', nargs='*')
 def parse_args(args=None):
     '''Parses arguments, returns ``(options, args)``.'''
     if args is None:
-        args = sys.argv
+        args = sys.argv[1:]
 
     parser = ArgumentParser(description='MicroDrop plugin manager',
                             parents=[MPM_PARSER])
@@ -188,7 +188,3 @@ def main(args=None):
     elif args.command == 'uninstall':
         for plugin_i in args.plugin:
             uninstall(plugin_package=plugin_i, plugins_directory=args.plugins_directory)
-
-
-if __name__ == '__main__':
-    main()

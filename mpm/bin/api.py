@@ -30,7 +30,7 @@ list_parser = subparsers.add_parser('list', help='List available plugins.')
 def parse_args(args=None):
     '''Parses arguments, returns ``(options, args)``.'''
     if args is None:
-        args = sys.argv
+        args = sys.argv[1:]
 
     parser = ArgumentParser(description='Actions related to available '
                             'MicroDrop Conda package plugin(s).',

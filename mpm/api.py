@@ -4,17 +4,13 @@ See https://github.com/wheeler-microfluidics/microdrop/issues/216
 '''
 import bz2
 import importlib
-import itertools as it
 import logging
 import json
 import platform
 import re
 import sys
-import types
-
 import conda_helpers as ch
 from pathlib import Path
-import requests
 import yaml
 
 logger = logging.getLogger(__name__)

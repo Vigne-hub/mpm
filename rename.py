@@ -1,7 +1,7 @@
 import sys
 
 import pandas as pd
-from path_helpers import path
+from microdrop_libs.path_helpers import path
 
 
 def main(root, old_name, new_name):
@@ -51,7 +51,7 @@ def parse_args(args=None):
     from argparse import ArgumentParser
 
     if args is None:
-        args = sys.argv
+        args = sys.argv[1:]
 
     parser = ArgumentParser(description='Rename template project with'
                             'hyphen-separated <new name> (path names and in '
