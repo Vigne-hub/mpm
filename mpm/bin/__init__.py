@@ -116,10 +116,10 @@ def validate_args(args):
             args.config_file is None]):
         args.plugins_directory = get_plugins_directory()
     elif args.plugins_directory is None:
-        args.config_file = args.config_file.resolve()
+        args.config_file = args.config_file.realpath()
         args.plugins_directory = get_plugins_directory(config_path=args.config_file)
     else:
-        args.plugins_directory = args.plugins_directory.resolve()
+        args.plugins_directory = args.plugins_directory.realpath()
     return args
 
 

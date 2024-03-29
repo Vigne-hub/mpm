@@ -15,7 +15,7 @@ import os
 import shutil
 import tempfile as tmp
 from shutil import rmtree
-from pathlib import Path
+from microdrop_libs.path_helpers import path
 from microdrop import configobj_micro as configobj
 import progressbar
 import requests
@@ -36,7 +36,7 @@ def home_dir():
     """
     Returns:
 
-        str : Path to home directory (or ``Documents`` directory on Windows).
+        str : path to home directory (or ``Documents`` directory on Windows).
     """
     if os.name == 'nt':
         from win32comext.shell import shell, shellcon
@@ -69,7 +69,7 @@ def get_plugins_directory(config_path=None, microdrop_user_root=None):
     config_path : str, optional
         Configuration file path (i.e., path to ``microdrop.ini``).
     microdrop_user_root : str, optional
-        Path to MicroDrop user data directory.
+        path to MicroDrop user data directory.
 
     Returns
     -------
@@ -86,31 +86,31 @@ def get_plugins_directory(config_path=None, microdrop_user_root=None):
 
     # # Find plugins directory path #
     if microdrop_user_root is not None:
-        microdrop_user_root = Path(microdrop_user_root).resolve()
+        microdrop_user_root = path(microdrop_user_root).realpath()
         resolved_by.append(RESOLVED_BY_PROFILE_ARG)
     elif 'MICRODROP_PROFILE' in os.environ:
-        microdrop_user_root = Path(os.environ['MICRODROP_PROFILE']).resolve()
+        microdrop_user_root = path(os.environ['MICRODROP_PROFILE']).realpath()
         resolved_by.append(RESOLVED_BY_PROFILE_ENV)
     else:
-        microdrop_user_root = Path(home_dir()).joinpath('MicroDrop')
+        microdrop_user_root = path(home_dir()).joinpath('MicroDrop')
 
     if config_path is not None:
-        config_path = Path(config_path).resolve()
+        config_path = path(config_path).realpath()
         resolved_by.append(RESOLVED_BY_CONFIG_ARG)
     elif 'MICRODROP_CONFIG' in os.environ:
-        config_path = Path(os.environ['MICRODROP_CONFIG']).resolve()
+        config_path = path(os.environ['MICRODROP_CONFIG']).realpath()
         resolved_by.append(RESOLVED_BY_CONFIG_ENV)
     else:
         config_path = microdrop_user_root.joinpath('microdrop.ini')
 
     try:
         # Look up plugins directory stored in configuration file.
-        plugins_directory = Path(configobj.ConfigObj(str(config_path))['plugins']['directory']).resolve()
-        if not plugins_directory.is_absolute():
+        plugins_directory = path(configobj.ConfigObj(str(config_path))['plugins']['directory']).realpath()
+        if not plugins_directory.isabs():
             # Plugins directory stored in configuration file as relative path.
             # Interpret as relative to parent directory of configuration file.
             plugins_directory = config_path.parent.joinpath(plugins_directory)
-        if not plugins_directory.is_dir():
+        if not plugins_directory.isdir():
             raise IOError('Plugins directory does not exist: {}'
                           .format(plugins_directory))
     except Exception as why:
@@ -153,7 +153,7 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
         "foo>=1.0"``, etc.)  See `version specifiers`_ reference for more
         details.
     plugins_directory : str
-        Path to MicroDrop user plugins directory.
+        path to MicroDrop user plugins directory.
     server_url : str
         URL of JSON request for MicroDrop plugins package index.  See
         ``DEFAULT_SERVER_URL`` for default.
@@ -161,7 +161,7 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
     Returns
     -------
     (path, dict)
-        Path to directory of installed plugin and plugin package metadata
+        path to directory of installed plugin and plugin package metadata
         dictionary.
 
 
@@ -173,8 +173,8 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
 
         .. _sci-bots/mpm#5: https://github.com/sci-bots/mpm/issues/5
     """
-    plugins_directory = Path(plugins_directory)
-    if Path(plugin_package).is_file():
+    plugins_directory = path(plugins_directory)
+    if path(plugin_package).isfile():
         plugin_is_file = True
         with open(plugin_package, 'rb') as plugin_file:
             # Plugin package is a file.
@@ -195,9 +195,9 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
     try:
         plugin_path = plugins_directory.joinpath(name)
     except:
-        plugin_path = Path(plugins_directory).joinpath(name)
+        plugin_path = path(plugins_directory).joinpath(name)
 
-    if not plugin_path.is_dir():
+    if not plugin_path.isdir():
         existing_version = None
     else:
         plugin_metadata = yaml.safe_load(plugin_path.joinpath('properties.yml')
@@ -271,7 +271,7 @@ def extract_metadata(fileobj):
     '''
     tar = tarfile.open(mode="r:gz", fileobj=fileobj)
 
-    plugin_path = Path(tmp.mkdtemp(prefix='mpm-'))
+    plugin_path = path(tmp.mkdtemp(prefix='mpm-'))
     try:
         tar.extractall(path=str(plugin_path))
 
@@ -281,7 +281,7 @@ def extract_metadata(fileobj):
     finally:
         fileobj.seek(0)
         for item in plugin_path.glob('*'):
-            if item.is_dir():
+            if item.isdir():
                 rmtree(item)
             else:
                 item.unlink()
@@ -305,7 +305,7 @@ def install_fileobj(fileobj, plugin_path):
     (path, dict)
         Directory of installed plugin and metadata dictionary for plugin.
     """
-    plugin_path = Path(plugin_path)
+    plugin_path = path(plugin_path)
     tar = tarfile.open(mode="r:gz", fileobj=fileobj)
 
     try:
@@ -329,11 +329,11 @@ def uninstall(plugin_package, plugins_directory):
     plugin_package : str
         Name of plugin package hosted on MicroDrop plugin index.
     plugins_directory : str
-        Path to MicroDrop user plugins directory.
+        path to MicroDrop user plugins directory.
     """
-    plugin_path = Path(plugins_directory).joinpath(plugin_package)
+    plugin_path = path(plugins_directory).joinpath(plugin_package)
 
-    if not plugin_path.is_dir():
+    if not plugin_path.isdir():
         raise IOError('Plugin `%s` is not installed in `%s`' %
                       (plugin_package, plugins_directory))
     else:
@@ -352,7 +352,7 @@ def uninstall(plugin_package, plugins_directory):
     # Uninstall latest release
     # ======================
     for item in plugin_path.glob('*'):
-        if item.is_dir():
+        if item.isdir():
             shutil.rmtree(item)
         else:
             item.unlink()
@@ -365,7 +365,7 @@ def freeze(plugins_directory):
     Parameters
     ----------
     plugins_directory : str
-        Path to MicroDrop user plugins directory.
+        path to MicroDrop user plugins directory.
 
     Returns
     -------
@@ -374,8 +374,8 @@ def freeze(plugins_directory):
     '''
     # Check existing version (if any).
     package_versions = []
-    for plugin_path_i in Path(plugins_directory).iterdir():
-        if plugin_path_i.is_dir():
+    for plugin_path_i in path(plugins_directory).iterdir():
+        if plugin_path_i.isdir():
             try:
                 plugin_metadata = yaml.safe_load(plugin_path_i.joinpath('properties.yml').read_text())
                 if plugin_path_i.name != plugin_metadata['package_name']:

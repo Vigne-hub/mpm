@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 import zipfile
-from pathlib import Path
+from microdrop_libs.path_helpers import path
 import yaml
 from shutil import rmtree
 
@@ -21,8 +21,8 @@ def parse_args(args=None):
         args = sys.argv[1:]
 
     parser = argparse.ArgumentParser(description='MicroDrop plugin Conda recipe builder')
-    parser.add_argument('-s', '--source-dir', type=Path, nargs='?')
-    parser.add_argument('-t', '--target-dir', type=Path, nargs='?')
+    parser.add_argument('-s', '--source-dir', type=path, nargs='?')
+    parser.add_argument('-t', '--target-dir', type=path, nargs='?')
     parser.add_argument('-p', '--package-name', nargs='?')
     # Use `-V` for version (from [common Unix flags][1]).
     #
@@ -31,9 +31,9 @@ def parse_args(args=None):
 
     parsed_args = parser.parse_args(args)
     if not parsed_args.source_dir:
-        parsed_args.source_dir = Path(os.environ['SRC_DIR'])
+        parsed_args.source_dir = path(os.environ['SRC_DIR'])
     if not parsed_args.target_dir:
-        prefix_dir = Path(os.environ['PREFIX'])
+        prefix_dir = path(os.environ['PREFIX'])
         # Extract module name from Conda package name.
         #
         # For example, the module name for a package named
@@ -73,8 +73,8 @@ def build(source_dir, target_dir, package_name=None, version_number=None):
             If not specified, assume version package exposes version using
             `versioneer <https://github.com/warner/python-versioneer>`_.
     """
-    source_dir = source_dir.resolve()
-    target_dir = target_dir.resolve()
+    source_dir = source_dir.realpath()
+    target_dir = target_dir.realpath()
     target_dir.mkdir(parents=True, exist_ok=True)
     source_archive = source_dir / f'{source_dir.name}.zip'
     if package_name is None:
@@ -87,7 +87,7 @@ def build(source_dir, target_dir, package_name=None, version_number=None):
     # Export git archive, which substitutes version expressions in
     # `_version.py` to reflect the state (i.e., revision and tag info) of the
     # git repository.
-    original_dir = Path.cwd()
+    original_dir = path.cwd()
     try:
         os.chdir(source_dir)
         subprocess.check_call(['git', 'archive', '-o', source_archive, 'HEAD'], shell=True)

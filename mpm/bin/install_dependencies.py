@@ -1,7 +1,7 @@
 import argparse
 import logging
 import sys
-from pathlib import Path
+from microdrop_libs.path_helpers import path
 
 # Adjust these imports according to your project structure.
 from ..hooks import on_plugin_install
@@ -35,13 +35,13 @@ def install_dependencies(plugins_directory, ostream=sys.stdout):
 
     Parameters
     ----------
-    plugins_directory : Path or str
+    plugins_directory : path or str
         File system path to directory containing zero or more plugin subdirectories.
     ostream : file-like
         Output stream for status messages (default: sys.stdout).
     '''
-    plugins_directory = Path(plugins_directory).resolve()
-    plugin_directories = [p for p in plugins_directory.iterdir() if p.is_dir()]
+    plugins_directory = path(plugins_directory).realpath()
+    plugin_directories = [p for p in plugins_directory.iterdir() if p.isdir()]
 
     print('*' * 50, file=ostream)
     print('Processing plugins:', file=ostream)

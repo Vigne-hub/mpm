@@ -10,7 +10,7 @@ import platform
 import re
 import sys
 import conda_helpers as ch
-from pathlib import Path
+from microdrop_libs.path_helpers import path
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def _islinklike(dir_path):
     bool
         ``True`` if :data:`dir_path` is a link *or* junction.
     """
-    dir_path = Path(dir_path)
+    dir_path = path(dir_path)
     if platform.system() == 'Windows':
         if dir_path.is_symlink():
             return True
@@ -61,8 +61,8 @@ def _save_action(extra_context=None):
 
     Returns
     -------
-    pathlib.Path, dict
-        Path to which action was written and action object, including list of
+    pathlib.path, dict
+        path to which action was written and action object, including list of
         revisions for active Conda environment.
     """
     # Get list of revisions to Conda environment since creation.
@@ -93,7 +93,7 @@ def _remove_broken_links():
         List of links removed (if any).
     """
     enabled_dir = MICRODROP_CONDA_PLUGINS / 'enabled'
-    if not enabled_dir.is_dir():
+    if not enabled_dir.isdir():
         return []
 
     def is_broken_link(path):
@@ -439,7 +439,7 @@ def disable_plugin(plugin_name):
     """
     plugin_names = [plugin_name] if isinstance(plugin_name, str) else plugin_name
 
-    # Path to the directory where enabled plugins are linked
+    # path to the directory where enabled plugins are linked
     enabled_path = MICRODROP_CONDA_PLUGINS / 'enabled'
 
     for name in plugin_names:
@@ -598,13 +598,13 @@ def installed_plugins(only_conda=False):
             are installed **as Conda packages** are returned.
     """
     available_path = MICRODROP_CONDA_SHARE / 'plugins' / 'available'
-    if not available_path.is_dir():
+    if not available_path.isdir():
         return []
 
     installed_plugins_ = []
     for plugin_path in available_path.iterdir():
         # Skip if the entry is not a directory or it's a symbolic link
-        if not plugin_path.is_dir() or plugin_path.is_symlink():
+        if not plugin_path.isdir() or plugin_path.is_symlink():
             continue
 
         # Read plugin package info from `properties.yml` file
@@ -612,7 +612,7 @@ def installed_plugins(only_conda=False):
         try:
             with properties_file.open('r') as input_:
                 properties_i = yaml.safe_load(input_)
-                properties_i['path'] = str(plugin_path.resolve())
+                properties_i['path'] = str(plugin_path.realpath())
                 installed_plugins_.append(properties_i)
         except Exception as e:
             logger.info('[warning] Could not read package info: `%s`, %s',
@@ -660,7 +660,7 @@ def enabled_plugins(installed_only=True):
 
     '''
     enabled_path = MICRODROP_CONDA_PLUGINS / 'enabled'
-    if not enabled_path.is_dir():
+    if not enabled_path.isdir():
         return []
 
     # Construct list of property dictionaries, one per enabled plugin
@@ -673,7 +673,7 @@ def enabled_plugins(installed_only=True):
             try:
                 with properties_file.open('r') as input_:
                     properties_i = yaml.safe_load(input_)
-                    properties_i['path'] = str(plugin_path.resolve())
+                    properties_i['path'] = str(plugin_path.realpath())
                     enabled_plugins_.append(properties_i)
             except Exception as e:
                 logger.info('[warning] Could not read package info: `%s`, %s',
