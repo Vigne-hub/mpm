@@ -29,7 +29,7 @@ def parse_args(args=None):
     # [1]: https://unix.stackexchange.com/a/108141/187716
     parser.add_argument('-V', '--version-number', nargs='?')
 
-    parsed_args = parser.parse_args(args)
+    parsed_args = parser.parse_args()
     if not parsed_args.source_dir:
         parsed_args.source_dir = path(os.environ['SRC_DIR'])
     if not parsed_args.target_dir:
@@ -40,7 +40,9 @@ def parse_args(args=None):
         # `microdrop.droplet_planning_plugin` would be
         # `droplet_planning_plugin`.
         module_name = os.environ['PKG_NAME'].split('.')[-1].replace('-', '_')
-        parsed_args.target_dir = prefix_dir / 'share' / 'microdrop' / 'plugins' / 'available' / module_name
+        parsed_args.target_dir = prefix_dir.joinpath('share', 'microdrop',
+                                                     'plugins', 'available',
+                                                     module_name)
     if not parsed_args.package_name:
         parsed_args.package_name = os.environ['PKG_NAME']
 
@@ -75,19 +77,19 @@ def build(source_dir, target_dir, package_name=None, version_number=None):
     """
     source_dir = source_dir.realpath()
     target_dir = target_dir.realpath()
-    target_dir.mkdir(parents=True, exist_ok=True)
-    source_archive = source_dir / f'{source_dir.name}.zip'
+    target_dir.makedirs_p()
+    source_archive = source_dir.joinpath(source_dir.name + '.zip')
     if package_name is None:
-        package_name = target_dir.name
-    logger.info(f'Source directory: {source_dir}')
-    logger.info(f'Source archive: {source_archive}')
-    logger.info(f'Target directory: {target_dir}')
-    logger.info(f'Package name: {package_name}')
+        package_name = str(target_dir.name)
+    logger.info('Source directory: %s', source_dir)
+    logger.info('Source archive: %s', source_archive)
+    logger.info('Target directory: %s', target_dir)
+    logger.info('Package name: %s', package_name)
 
     # Export git archive, which substitutes version expressions in
     # `_version.py` to reflect the state (i.e., revision and tag info) of the
     # git repository.
-    original_dir = path.cwd()
+    original_dir = path(os.getcwd())
     try:
         os.chdir(source_dir)
         subprocess.check_call(['git', 'archive', '-o', source_archive, 'HEAD'], shell=True)
@@ -98,14 +100,16 @@ def build(source_dir, target_dir, package_name=None, version_number=None):
     with zipfile.ZipFile(source_archive, 'r') as zip_ref:
         zip_ref.extractall(target_dir)
     # Extraction is complete.  Remove temporary archive.
-    source_archive.unlink()
+    source_archive.remove()
 
     # Delete Conda build recipe from installed package.
-    rmtree(target_dir / '.conda-recipe')
+    target_dir.joinpath('.conda-recipe').rmtree()
     # Delete Conda build recipe from installed package.
-    for p in target_dir.glob('.git*'):
-        p.unlink()
+    for p in target_dir.files('.git*'):
+        p.remove()
 
+    # Write package information to (legacy) `properties.yml` file.
+    original_dir = path(os.getcwd())
     try:
         os.chdir(source_dir)
         if version_number is None:
@@ -119,7 +123,10 @@ def build(source_dir, target_dir, package_name=None, version_number=None):
     properties = {'package_name': package_name, 'plugin_name': str(target_dir.name)}
     properties.update(version_info)
 
-    with (target_dir / 'properties.yml').open('w') as properties_yml:
+    with target_dir.joinpath('properties.yml').open('w') as properties_yml:
+        # Dump properties to YAML-formatted file.
+        # Setting `default_flow_style=False` writes each property on a separate
+        # line (cosmetic change only).
         yaml.dump(properties, properties_yml, default_flow_style=False)
 
 
