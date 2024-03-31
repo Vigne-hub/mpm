@@ -3,7 +3,7 @@ import threading
 import gi
 
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, GObject
 
 import conda_helpers as ch
 import logging_helpers as lh
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # In GTK3, GDK threads should be initialized like this, if needed. However,
 # this is often not necessary in modern GTK3 applications unless you're directly
 # using GDK in threads. GTK3 itself is thread-aware.
-# Gdk.threads_init()  # Deprecated and usually not needed in GTK3
+GObject.threads_init()  # Deprecated and usually not needed in GTK3
 
 def update_plugin_dialog(package_name=None, update_args=None,
                          update_kwargs=None, ignore_not_installed=True):

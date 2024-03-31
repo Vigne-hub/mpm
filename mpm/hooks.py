@@ -25,13 +25,13 @@ def on_plugin_install(plugin_directory, ostream=sys.stdout):
     """
     current_directory = os.getcwd()
 
-    plugin_directory = ph.path(plugin_directory)
+    plugin_directory = ph.path(plugin_directory).realpath()
     print(f'Processing post-install hook for: {plugin_directory.name}', file=ostream)
 
     hooks_dir_i = plugin_directory.joinpath('hooks/Windows').realpath()
     hook_path_i = hooks_dir_i.joinpath('on_plugin_install.bat')
 
-    if hook_path_i.is_file():
+    if hook_path_i.isfile():
         logger.info('Processing post-install hook for: %s',
                     plugin_directory.name)
         os.chdir(hook_path_i.parent)

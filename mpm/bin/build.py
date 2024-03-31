@@ -75,8 +75,8 @@ def build(source_dir, target_dir, package_name=None, version_number=None):
             If not specified, assume version package exposes version using
             `versioneer <https://github.com/warner/python-versioneer>`_.
     """
-    source_dir = source_dir.realpath()
-    target_dir = target_dir.realpath()
+    source_dir = path(source_dir).realpath()
+    target_dir = path(target_dir).realpath()
     target_dir.makedirs_p()
     source_archive = source_dir.joinpath(source_dir.name + '.zip')
     if package_name is None:

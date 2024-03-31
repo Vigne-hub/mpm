@@ -81,7 +81,7 @@ def parse_args(args=None):
     parser = ArgumentParser(description='MicroDrop plugin manager',
                             parents=[MPM_PARSER])
 
-    return parser.parse_args(args=args)
+    return parser.parse_args()
 
 
 def validate_args(args):
@@ -102,7 +102,7 @@ def validate_args(args):
     logging.basicConfig(level=getattr(logging, args.log_level.upper()))
 
     if getattr(args, 'command', None) == 'install':
-        if args.requirements_file and not args.requirements_file.is_file():
+        if args.requirements_file and not args.requirements_file.isfile():
             print('Requirements file not available: {}'
                   .format(args.requirements_file), file=sys.stderr)
             raise SystemExit(-1)
@@ -127,14 +127,15 @@ def main(args=None):
     if args is None:
         args = parse_args()
     args = validate_args(args)
-    logger.debug('Arguments: %s', pformat_dict(vars(args)))
+    logger.debug('Arguments: %s', args)
     if args.command == 'freeze':
         print('\n'.join(freeze(plugins_directory=args.plugins_directory)))
     elif args.command == 'hook':
         if not args.plugin:
-            plugin_paths = list(args.plugins_directory.glob('*'))
+            plugin_paths = args.plugins_directory.dirs()
         else:
-            plugin_paths = [args.plugins_directory / p for p in args.plugin]
+            plugin_paths = [args.plugins_directory.joinpath(p)
+                            for p in args.plugin]
         print(50 * '*')
         print('# Processing `on_install` hook for: #\n')
         print('\n'.join(['  - {}{}'.format(p.name, '' if p.exists()
@@ -150,9 +151,9 @@ def main(args=None):
                     print('[warning] Skipping missing plugin', file=sys.stderr)
     elif args.command == 'install':
         if args.requirements_file:
-            with args.requirements_file.open() as file:
-                args.plugin = [line.strip() for line in file
-                               if not line.startswith('#')]
+            args.plugin = [line.strip() for line in
+                           args.requirements_file.lines()
+                           if not line.startswith('#')]
         for plugin_i in args.plugin:
             try:
                 path_i, meta_i = install(plugin_package=plugin_i,
@@ -176,11 +177,16 @@ def main(args=None):
             for k in ['upload_time', 'size']:
                 release_info[k] = [r[k] for r in releases.values()]
 
-            release_info['upload_time'] = [dt.datetime.strptime(timestamp,
-                                                                '%Y-%m-%dT%H:%M:%S.%f').strftime('%Y-%m-%d %H:%M') for
-                                           timestamp in release_info['upload_time']]
-            release_info['size'] = [si.si_format(s, precision=0, format_str='{value} {prefix}B') for s in
-                                    release_info['size']]
+            release_info['upload_time'] = map(lambda timestamp: dt.datetime
+                                              .strptime(timestamp,
+                                                        r'%Y-%m-%dT'
+                                                        r'%H:%M:%S.%f')
+                                              .strftime('%Y-%m-%d %H:%M'),
+                                              release_info['upload_time'])
+            release_info['size'] = map(lambda s:
+                                       si.si_format(s, precision=0, format_str=
+                                                    '{value} {prefix}B'),
+                                       release_info['size'])
 
             print('\n' + pformat_dict(release_info))
         except KeyError as exception:

@@ -12,9 +12,7 @@ Inspired by `pip`.
 import io
 import logging
 import os
-import shutil
 import tempfile as tmp
-from shutil import rmtree
 from microdrop_libs.path_helpers import path
 from microdrop import configobj_micro as configobj
 import progressbar
@@ -95,7 +93,7 @@ def get_plugins_directory(config_path=None, microdrop_user_root=None):
         microdrop_user_root = path(home_dir()).joinpath('MicroDrop')
 
     if config_path is not None:
-        config_path = path(config_path).realpath()
+        config_path = path(config_path).expand()
         resolved_by.append(RESOLVED_BY_CONFIG_ARG)
     elif 'MICRODROP_CONFIG' in os.environ:
         config_path = path(os.environ['MICRODROP_CONFIG']).realpath()
@@ -105,7 +103,8 @@ def get_plugins_directory(config_path=None, microdrop_user_root=None):
 
     try:
         # Look up plugins directory stored in configuration file.
-        plugins_directory = path(configobj.ConfigObj(str(config_path))['plugins']['directory']).realpath()
+        plugins_directory = path(configobj.ConfigObj(config_path)
+                                 ['plugins']['directory'])
         if not plugins_directory.isabs():
             # Plugins directory stored in configuration file as relative path.
             # Interpret as relative to parent directory of configuration file.
@@ -173,6 +172,8 @@ def install(plugin_package, plugins_directory, server_url=DEFAULT_SERVER_URL):
 
         .. _sci-bots/mpm#5: https://github.com/sci-bots/mpm/issues/5
     """
+
+
     plugins_directory = path(plugins_directory)
     if path(plugin_package).isfile():
         plugin_is_file = True
@@ -280,12 +281,7 @@ def extract_metadata(fileobj):
 
     finally:
         fileobj.seek(0)
-        for item in plugin_path.glob('*'):
-            if item.isdir():
-                rmtree(item)
-            else:
-                item.unlink()
-        shutil.rmtree(plugin_path)
+        plugin_path.rmtree()
 
 
 def install_fileobj(fileobj, plugin_path):
@@ -315,7 +311,7 @@ def install_fileobj(fileobj, plugin_path):
         fileobj.seek(0)
     except:
         # Error occured, so delete extracted plugin.
-        shutil.rmtree(plugin_path)
+        plugin_path.rmtree()
         raise
 
     # TODO Handle `requirements.txt`.
@@ -339,7 +335,7 @@ def uninstall(plugin_package, plugins_directory):
     else:
         try:
             plugin_metadata = yaml.safe_load(plugin_path.joinpath('properties.yml').read_text())
-            existing_version = plugin_metadata.get('version')
+            existing_version = plugin_metadata['version']
         except:
             existing_version = None
 
@@ -351,12 +347,7 @@ def uninstall(plugin_package, plugins_directory):
 
     # Uninstall latest release
     # ======================
-    for item in plugin_path.glob('*'):
-        if item.isdir():
-            shutil.rmtree(item)
-        else:
-            item.unlink()
-    shutil.rmtree(plugin_path)
+    plugin_path.rmtree()
     print('  \--> done')
 
 
@@ -374,7 +365,7 @@ def freeze(plugins_directory):
     '''
     # Check existing version (if any).
     package_versions = []
-    for plugin_path_i in path(plugins_directory).iterdir():
+    for plugin_path_i in path(plugins_directory).dirs():
         if plugin_path_i.isdir():
             try:
                 plugin_metadata = yaml.safe_load(plugin_path_i.joinpath('properties.yml').read_text())

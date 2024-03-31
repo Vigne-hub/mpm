@@ -40,9 +40,9 @@ def _islinklike(dir_path):
     """
     dir_path = path(dir_path)
     if platform.system() == 'Windows':
-        if dir_path.is_symlink():
+        if dir_path.isjunction():
             return True
-    elif dir_path.is_symlink():
+    elif dir_path.islink():
         return True
     return False
 
@@ -66,7 +66,8 @@ def _save_action(extra_context=None):
         revisions for active Conda environment.
     """
     # Get list of revisions to Conda environment since creation.
-    revisions_js = ch.conda_exec('list', '--revisions', '--json', verbose=False)
+    revisions_js = ch.conda_exec('list', '--revisions', '--json',
+                                 verbose=False)
     revisions = json.loads(revisions_js)
     # Save list of revisions to `/etc/microdrop/plugins/actions/rev<rev>.json`
     # See [wheeler-microfluidics/microdrop#200][i200].
@@ -74,8 +75,9 @@ def _save_action(extra_context=None):
     # [i200]: https://github.com/wheeler-microfluidics/microdrop/issues/200
     action = extra_context.copy() if extra_context else {}
     action['revisions'] = revisions
-    action_path = MICRODROP_CONDA_ACTIONS / f'rev{revisions[-1]["rev"]}.json.bz2'
-    action_path.parent.mkdir(parents=True, exist_ok=True)
+    action_path = (MICRODROP_CONDA_ACTIONS
+                   .joinpath('rev{}.json.bz2'.format(revisions[-1]['rev'])))
+    action_path.parent.makedirs_p()
     # Compress action file using bz2 to save disk space.
     with bz2.open(action_path, mode='wt', compresslevel=9) as output:
         json.dump(action, output, indent=2)
@@ -84,40 +86,36 @@ def _save_action(extra_context=None):
 
 
 def _remove_broken_links():
-    """
+    '''
     Remove broken links in `<conda prefix>/etc/microdrop/plugins/enabled/`.
 
     Returns
     -------
     list
         List of links removed (if any).
-    """
-    enabled_dir = MICRODROP_CONDA_PLUGINS / 'enabled'
+    '''
+    enabled_dir = MICRODROP_CONDA_PLUGINS.joinpath('enabled')
     if not enabled_dir.isdir():
         return []
 
-    def is_broken_link(path):
-        """
-        Checks if the given path is a broken symlink or junction.
-        """
+    broken_links = []
+    for dir_i in enabled_dir.walkdirs(errors='ignore'):
         if platform.system() == 'Windows':
-            # On Windows, is_symlink() also returns True for junctions
-            return path.is_symlink() and not path.exists()
+            if dir_i.isjunction() and not dir_i.readlink().isdir():
+                # Junction/link target no longer exists.
+                broken_links.append(dir_i)
         else:
             # currently do not support non windows
             raise NotImplementedError('Unsupported platform')
-
-    broken_links = [dir_i for dir_i in enabled_dir.glob('**/*') if is_broken_link(dir_i)]
 
     removed_links = []
     for link_i in broken_links:
         try:
             link_i.unlink()
+        except:
+            pass
+        else:
             removed_links.append(link_i)
-        except Exception as e:
-            # Optionally log the error or pass
-            print(f"Error removing link {link_i}: {e}")
-            # pass
     return removed_links
 
 
@@ -218,11 +216,11 @@ def install(plugin_name, *args, **kwargs):
         Conda installation log object (from JSON Conda install output).
     """
     # Ensure plugin_name is a list to simplify processing
-    plugin_names = [plugin_name] if isinstance(plugin_name, str) else plugin_name
+    plugin_name = [plugin_name] if isinstance(plugin_name, str) else plugin_name
 
-    # Prepare Conda command arguments
-    conda_args = ['install', '-y', '--json'] + list(args) + plugin_names
-    install_log_js = ch.conda_exec(*conda_args, **kwargs, verbose=False)
+    # Perform installation
+    conda_args = (['install', '-y', '--json'] + list(args) + plugin_name)
+    install_log_js = ch.conda_exec(*conda_args, verbose=False)
     install_log = json.loads(install_log_js.split('\x00')[-1])
 
     # Check for actual installation actions and if not a dry-run
@@ -279,21 +277,19 @@ def rollback(*args, **kwargs):
 
     # Compiling regular expression to match revision files
     cre_rev = re.compile(r'rev(?P<rev>\d+)')
-    # Sorting and selecting the most recent action file
-    action_file = sorted([(int(cre_rev.match(file_i.stem).group('rev')), file_i)
-                          for file_i in action_files
-                          if cre_rev.match(file_i.stem)],
-                         key=lambda x: x[0], reverse=True)[0][1]
-    # Reading action information based on file extension
-    if action_file.suffix.lower() == '.bz2':
-        # File is compressed using bz2.
-        with bz2.open(action_file, mode='rt') as input_:
+    action_file = sorted([(int(cre_rev.match(file_i.namebase).group('rev')),
+                           file_i) for file_i in
+                          action_files if cre_rev.match(file_i.namebase)],
+                         reverse=True)[0]
+    # Do rollback (i.e., install state of previous revision).
+    if action_file[1].ext.lower() == '.bz2':
+        # Assume file is compressed using bz2.
+        with bz2.BZ2File(action_file, mode='r') as input_:
             action = json.load(input_)
     else:
         # Assume it is raw JSON.
         with action_file.open('r') as input_:
             action = json.load(input_)
-
     rollback_revision = action['revisions'][-2]
     conda_args = (['install', '--json'] + list(args) +
                   ['--revision', str(rollback_revision)])
@@ -326,25 +322,26 @@ def uninstall(plugin_name, *args):
     dict
         Conda uninstallation log object (from JSON Conda uninstall output).
     """
-    # Ensure plugin_name is a list for uniform processing
-    plugin_names = [plugin_name] if isinstance(plugin_name, str) else plugin_name
+    if isinstance(plugin_name, str):
+        plugin_name = [plugin_name]
 
-    available_path = MICRODROP_CONDA_SHARE / 'plugins' / 'available'
-    for name_i in plugin_names:
+    available_path = MICRODROP_CONDA_SHARE.joinpath('plugins', 'available')
+    for name_i in plugin_name:
         plugin_module_i = name_i.split('.')[-1].replace('-', '_')
-        plugin_path_i = available_path / plugin_module_i
-        if not plugin_path_i.exists():
-            raise IOError(f'Plugin `{name_i}` not found in `{available_path}`')
+        plugin_path_i = available_path.joinpath(plugin_module_i)
+        if not _islinklike(plugin_path_i) and not plugin_path_i.isdir():
+            raise IOError('Plugin `{}` not found in `{}`'
+                          .format(name_i, available_path))
         else:
             logger.debug(f'[uninstall] Found plugin `{plugin_path_i}`')
 
     # Perform uninstall operation.
-    conda_args = ['uninstall', '--json', '-y'] + list(args) + plugin_names
+    conda_args = ['uninstall', '--json', '-y'] + list(args) + plugin_name
     uninstall_log_js = ch.conda_exec(*conda_args, verbose=False)
     # Remove broken links in `<conda prefix>/etc/microdrop/plugins/enabled/`,
     # since uninstall may have made one or more packages unavailable.
     _remove_broken_links()
-    logger.debug(f'Uninstalled plugins: {plugin_names}')
+    logger.debug(f'Uninstalled plugins: {plugin_name}')
     return json.loads(uninstall_log_js.split('\x00')[-1])
 
 
@@ -377,14 +374,31 @@ def enable_plugin(plugin_name):
         If plugin is not installed to ``<conda prefix>/share/microdrop/plugins/available/``.
     """
     if isinstance(plugin_name, str):
-        plugin_names = [plugin_name]
+        plugin_name = [plugin_name]
+        singleton = True
     else:
-        plugin_names = plugin_name
+        singleton = False
 
     # Conda-managed plugins
-    shared_available_path = MICRODROP_CONDA_SHARE / 'plugins' / 'available'
+    shared_available_path = MICRODROP_CONDA_SHARE.joinpath('plugins',
+                                                           'available')
     # User-managed plugins
-    etc_available_path = MICRODROP_CONDA_ETC / 'plugins' / 'available'
+    etc_available_path = MICRODROP_CONDA_ETC.joinpath('plugins', 'available')
+
+    available_paths = (etc_available_path, shared_available_path)
+    plugin_paths = []
+    for name_i in plugin_name:
+        for available_path_j in available_paths:
+            plugin_path_ij = available_path_j.joinpath(name_i)
+            if not _islinklike(plugin_path_ij) and plugin_path_ij.isdir():
+                logger.debug('Found plugin directory: `%s`', plugin_path_ij)
+                break
+        else:
+            raise IOError('Plugin `{}` not found in `{}` or `{}`'
+                          .format(name_i, *available_paths))
+        plugin_paths.append(plugin_path_ij)
+
+    # All specified plugins are available.
 
     # Link all specified plugins in
     # `<conda prefix>/etc/microdrop/plugins/enabled/` (if not already linked).
@@ -394,33 +408,21 @@ def enable_plugin(plugin_name):
     # Set flag for each plugin: `False` iff the plugin was already enabled,
     # `True` iff it was just enabled now.
     enabled_now = {}
-
-    for name in plugin_names:
-        # Find plugin in available paths
-        for available_path in (etc_available_path, shared_available_path):
-            plugin_path = available_path / name
-            if plugin_path.exists():
-                break
-        else:
-            raise IOError(f'Plugin `{name}` not found in `{etc_available_path}` or `{shared_available_path}`')
-
-        # Enable plugin if not already enabled
-        link_path = enabled_path / name
-        if not link_path.exists():
-            # On Windows, create a junction; otherwise, create a symlink
+    for plugin_path_i in plugin_paths:
+        plugin_link_path_i = enabled_path.joinpath(plugin_path_i.name)
+        if not plugin_link_path_i.exists():
             if platform.system() == 'Windows':
-                # For Windows, using os.symlink might require elevated privileges for junctions
-                # Consider using a specific Windows API or command line for junction creation if necessary
-                raise NotImplementedError('Junction creation is not directly supported by this script on Windows.')
+                plugin_path_i.junction(plugin_link_path_i)
             else:
-                plugin_path.symlink_to(link_path)
-            logger.debug(f'Enabled plugin directory: `{plugin_path}` -> `{link_path}`')
-            enabled_now[name] = True
+                plugin_path_i.symlink(plugin_link_path_i)
+            logger.debug('Enabled plugin directory: `%s` -> `%s`',
+                         plugin_path_i, plugin_link_path_i)
+            enabled_now[plugin_path_i.name] = True
         else:
-            logger.debug(f'Plugin already enabled: `{plugin_path}` -> `{link_path}`')
-            enabled_now[name] = False
-
-    return enabled_now
+            logger.debug('Plugin already enabled: `%s` -> `%s`', plugin_path_i,
+                         plugin_link_path_i)
+            enabled_now[plugin_path_i.name] = False
+    return enabled_now if not singleton else enabled_now.values()[0]
 
 
 def disable_plugin(plugin_name):
@@ -437,20 +439,26 @@ def disable_plugin(plugin_name):
     IOError
         If plugin is not enabled.
     """
-    plugin_names = [plugin_name] if isinstance(plugin_name, str) else plugin_name
+    if isinstance(plugin_name, str):
+        plugin_name = [plugin_name]
 
-    # path to the directory where enabled plugins are linked
-    enabled_path = MICRODROP_CONDA_PLUGINS / 'enabled'
+    # Verify all specified plugins are currently enabled.
+    enabled_path = MICRODROP_CONDA_PLUGINS.joinpath('enabled')
+    for name_i in plugin_name:
+        plugin_path_i = enabled_path.joinpath(name_i)
+        if not _islinklike(plugin_path_i) and not plugin_path_i.isdir():
+            raise IOError('Plugin `{}` not found in `{}`'
+                          .format(name_i, enabled_path))
 
-    for name in plugin_names:
-        plugin_link_path = enabled_path / name
-        # Check if the plugin link exists and appears to be a symlink or directory
-        if not plugin_link_path.exists():
-            raise IOError(f'Plugin `{name}` not found in `{enabled_path}` or is not a symlink/junction.')
+    # All specified plugins are enabled.
 
-        # Remove the symlink or junction
-        plugin_link_path.unlink()
-        logger.debug(f'Disabled plugin `{name}` (i.e., removed `{plugin_link_path}`)')
+    # Remove all specified plugins from
+    # `<conda prefix>/etc/microdrop/plugins/enabled/`.
+    for name_i in plugin_name:
+        plugin_link_path_i = enabled_path.joinpath(name_i)
+        plugin_link_path_i.unlink()
+        logger.debug('Disabled plugin `%s` (i.e., removed `%s`)',
+                     plugin_path_i, plugin_link_path_i)
 
 
 def update(*args, **kwargs):
@@ -504,11 +512,12 @@ def update(*args, **kwargs):
     """
     package_name = kwargs.pop('package_name', None)
 
-    # Retrieve a list of all installed plugins that are managed by Conda
+    # Only consider **installed** plugins (see `installed_plugins()` docstring).
     installed_plugins_ = installed_plugins(only_conda=True)
 
     if installed_plugins_:
-        plugin_packages = [plugin['package_name'] for plugin in installed_plugins_]
+        plugin_packages = [plugin_i['package_name']
+                           for plugin_i in installed_plugins_]
         if package_name is None:
             package_name = plugin_packages
         elif isinstance(package_name, str):
@@ -554,18 +563,15 @@ def import_plugin(package_name, include_available=False):
     module
         Imported plugin module.
     """
-    available_plugins_dir = MICRODROP_CONDA_SHARE / 'plugins' / 'available'
-    enabled_plugins_dir = MICRODROP_CONDA_ETC / 'plugins' / 'enabled'
-    search_paths = [str(enabled_plugins_dir)]
-
+    available_plugins_dir = MICRODROP_CONDA_SHARE.joinpath('plugins',
+                                                           'available')
+    enabled_plugins_dir = MICRODROP_CONDA_ETC.joinpath('plugins', 'enabled')
+    search_paths = [enabled_plugins_dir]
     if include_available:
-        search_paths.append(str(available_plugins_dir))
-
-    # Add the directories to sys.path if they're not already included
-    for dir_path in search_paths:
-        if dir_path not in sys.path:
-            sys.path.insert(0, dir_path)
-
+        search_paths += [available_plugins_dir]
+    for dir_i in search_paths:
+        if dir_i not in sys.path:
+            sys.path.insert(0, dir_i)
     module_name = package_name.split('.')[-1].replace('-', '_')
     return importlib.import_module(module_name)
 
@@ -597,37 +603,43 @@ def installed_plugins(only_conda=False):
             If :data:`only_conda` is ``True``, only properties for plugins that
             are installed **as Conda packages** are returned.
     """
-    available_path = MICRODROP_CONDA_SHARE / 'plugins' / 'available'
+    available_path = MICRODROP_CONDA_SHARE.joinpath('plugins', 'available')
     if not available_path.isdir():
         return []
 
     installed_plugins_ = []
-    for plugin_path in available_path.iterdir():
-        # Skip if the entry is not a directory or it's a symbolic link
-        if not plugin_path.isdir() or plugin_path.is_symlink():
-            continue
-
-        # Read plugin package info from `properties.yml` file
-        properties_file = plugin_path / 'properties.yml'
-        try:
-            with properties_file.open('r') as input_:
-                properties_i = yaml.safe_load(input_)
-                properties_i['path'] = str(plugin_path.realpath())
+    for plugin_path_i in available_path.dirs():
+        # Only process plugin directory if it is *not a link*.
+        if not _islinklike(plugin_path_i):
+            # Read plugin package info from `properties.yml` file.
+            try:
+                with plugin_path_i.joinpath('properties.yml').open('r') as input_:
+                    properties_i = yaml.load(input_.read())
+            except:
+                logger.info('[warning] Could not read package info: `%s`',
+                            plugin_path_i.joinpath('properties.yml'),
+                            exc_info=True)
+            else:
+                properties_i['path'] = plugin_path_i.realpath()
                 installed_plugins_.append(properties_i)
-        except Exception as e:
-            logger.info('[warning] Could not read package info: `%s`, %s',
-                        properties_file, e, exc_info=True)
 
     if only_conda:
         # Filter for plugins installed as Conda packages
         try:
-            package_names = [plugin['package_name'] for plugin in installed_plugins_]
-            conda_package_infos = ch.package_version(package_names, verbose=False)
-            installed_package_names = set(pkg_info['name'] for pkg_info in conda_package_infos)
-            return [plugin for plugin in installed_plugins_ if plugin['package_name'] in installed_package_names]
+            package_names = [plugin_i['package_name']
+                             for plugin_i in installed_plugins_]
+            conda_package_infos = ch.package_version(package_names,
+                                                     verbose=False)
         except ch.PackageNotFound as exception:
+            # At least one specified plugin package name did not correspond to an
+            # installed Conda package.
             logger.warning(str(exception))
-            return [plugin for plugin in installed_plugins_ if plugin['package_name'] in exception.available]
+            conda_package_infos = exception.available
+        # Extract name from each Conda plugin package.
+        installed_package_names = set([package_i['name']
+                                       for package_i in conda_package_infos])
+        return [plugin_i for plugin_i in installed_plugins_
+                if plugin_i['package_name'] in installed_package_names]
     else:
         return installed_plugins_
 
@@ -659,39 +671,49 @@ def enabled_plugins(installed_only=True):
         directory or a link/junction.
 
     '''
-    enabled_path = MICRODROP_CONDA_PLUGINS / 'enabled'
+    enabled_path = MICRODROP_CONDA_PLUGINS.joinpath('enabled')
     if not enabled_path.isdir():
         return []
 
     # Construct list of property dictionaries, one per enabled plugin
     # directory.
     enabled_plugins_ = []
-    for plugin_path in enabled_path.iterdir():
-        # Check condition based on 'installed_only' and if the path is a link
-        if not installed_only or plugin_path.is_symlink():
-            properties_file = plugin_path / 'properties.yml'
+    for plugin_path_i in enabled_path.dirs():
+        if not installed_only or _islinklike(plugin_path_i):
+            # Enabled plugin path is either **a link to an installed plugin**
+            # or call explicitly specifies that plugins that are not installed
+            # should still be considered.
+
+            # Read plugin package info from `properties.yml` file.
             try:
-                with properties_file.open('r') as input_:
-                    properties_i = yaml.safe_load(input_)
-                    properties_i['path'] = str(plugin_path.realpath())
-                    enabled_plugins_.append(properties_i)
-            except Exception as e:
-                logger.info('[warning] Could not read package info: `%s`, %s',
-                            properties_file, e, exc_info=True)
+                with plugin_path_i.joinpath('properties.yml').open('r') as input_:
+                    properties_i = yaml.safe_load(input_.read())
+            except:
+                logger.info('[warning] Could not read package info: `%s`',
+                            plugin_path_i.joinpath('properties.yml'),
+                            exc_info=True)
+                continue
+            else:
+                properties_i['path'] = plugin_path_i.realpath()
+                enabled_plugins_.append(properties_i)
 
     if installed_only:
         try:
-            package_names = [plugin['package_name'] for plugin in enabled_plugins_]
+            # Attempt to look up installed Conda package info for each enabled
+            # plugin.
+            package_names = [properties_i['package_name']
+                             for properties_i in enabled_plugins_]
             installed_info = ch.package_version(package_names, verbose=False)
-            installed_package_names = {info['name'] for info in installed_info}
-
-            return [plugin for plugin in enabled_plugins_ if plugin['package_name'] in installed_package_names]
-
         except ch.PackageNotFound as exception:
+            # Failed to find a corresponding installed Conda package for at
+            # least one enabled plugin.
             logger.warning(str(exception))
-            available_names = {package['name'] for package in exception.available}
-
-            return [plugin for plugin in enabled_plugins_ if plugin['package_name'] in available_names]
+            available_names = set([package_i['name']
+                                   for package_i in exception.available])
+            # Only return list of enabled plugins that have a corresponding
+            # Conda package installed.
+            return [properties_i for properties_i in enabled_plugins_
+                    if properties_i['package_name'] in available_names]
 
     # Return list of all enabled plugins, regardless of whether or not they
     # have corresponding Conda packages installed.

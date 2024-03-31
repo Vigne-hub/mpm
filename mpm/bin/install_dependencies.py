@@ -17,7 +17,8 @@ INSTALL_REQUIREMENTS_PARSER = argparse.ArgumentParser(add_help=False, parents=[L
 def validate_args(args):
     logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.DEBUG))
 
-    if not any([args.plugins_directory, args.config_file]):
+    if all([args.plugins_directory is None,
+            args.config_file is None]):
         args.plugins_directory = default_plugins_directory
         logger.debug('Using default plugins directory: "%s"', args.plugins_directory)
     elif not args.plugins_directory:
@@ -40,8 +41,7 @@ def install_dependencies(plugins_directory, ostream=sys.stdout):
     ostream : file-like
         Output stream for status messages (default: sys.stdout).
     '''
-    plugins_directory = path(plugins_directory).realpath()
-    plugin_directories = [p for p in plugins_directory.iterdir() if p.isdir()]
+    plugin_directories = plugins_directory.realpath().dirs()
 
     print('*' * 50, file=ostream)
     print('Processing plugins:', file=ostream)
